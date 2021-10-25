@@ -1,4 +1,4 @@
-#include "Particle.h"
+//#include "Particle.h"
 
 #include "CellularHelper.h"
 
@@ -669,6 +669,65 @@ String CellularHelperCREGResponse::toString() const {
 	}
 }
 
+void CellularHelperCEREGResponse::postProcess() {
+	// "\r\n+CEREG: 2,1,\"FFFE\",\"C45C010\",8\r\n"
+	// "\r\n+CEREG: 2,1,"3a9b","0000c33d",7\r\n"
+	//int n;
+
+	if (sscanf(string.c_str(), "%d,%d,\"%x\",\"%x\",%d", &n, &stat, &lac, &ci, &rat) == 5) {
+		// SARA-R4 does include the n (5 parameters)
+		valid = true;
+	}
+	else
+	if (sscanf(string.c_str(), "%d,\"%x\",\"%x\",%d", &stat, &lac, &ci, &rat) == 4) {
+		// SARA-U and SARA-G don't include the n (4 parameters)
+		valid = true;
+	}
+	else
+	if (sscanf(string.c_str(), "%d,%d", &n, &stat) == 2) {
+		// in case n=0
+		valid = true;
+	}
+}
+
+String CellularHelperCEREGResponse::toString() const {
+	if (valid) {
+		return String::format("n=%d stat=%d lac=0x%x ci=0x%x rat=%d", n, stat, lac, ci, rat);
+	}
+	else {
+		return "valid=false";
+	}
+}
+
+void CellularHelperPsmStatusResponse::postProcess() 
+{
+	if (string.endsWith("0"))
+	{
+		valid = true;
+		stat = 0;
+	}
+	else
+	if (string.endsWith("1"))
+	{
+		valid = true;
+		stat = 1;
+	}
+	else{
+		valid = false;
+		stat = 0;
+	}
+
+	string = "";
+}
+
+String CellularHelperPsmStatusResponse::toString() const {
+	if (valid) {
+		return String::format("psm status=%d", stat);
+	}
+	else {
+		return "valid=false";
+	}
+}
 
 String CellularHelperClass::getManufacturer() const {
 	CellularHelperStringResponse resp;
@@ -879,6 +938,204 @@ int CellularHelperClass::getMNO() const {
 	return atoi(resp.string);
 }
 
+String CellularHelperClass::getCOPS() const
+{
+	CellularHelperPlusStringResponse resp;
+	resp.command = "COPS";
+
+	Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+COPS?\r\n");
+	
+	return resp.string;
+}
+
+String CellularHelperClass::getCEREG() const
+{
+	CellularHelperPlusStringResponse resp;
+	resp.command = "CEREG";
+
+	Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+CEREG?\r\n");
+	
+	return resp.string;
+}
+
+String CellularHelperClass::getCREG() const
+{
+	CellularHelperPlusStringResponse resp;
+	resp.command = "CREG";
+
+	Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+CREG?\r\n");
+	
+	return resp.string;
+}
+
+String CellularHelperClass::getLocalPSMSettings() const
+{
+	CellularHelperPlusStringResponse resp;
+	resp.command = "CPSMS";
+
+	Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+CPSMS?\r\n");
+
+	return resp.string;	
+}
+
+String CellularHelperClass::getNetworkPSMSettings() const
+{
+	CellularHelperPlusStringResponse resp;
+	resp.command = "UCPSMS";
+
+	Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+UCPSMS?\r\n");
+	
+	return resp.string;	
+}
+
+bool CellularHelperClass::enterPSM() const
+{
+	int tempResp;
+	CellularHelperPsmStatusResponse psm_resp;
+	psm_resp.command = "UUPSMR";
+
+	if (!isModemRegistered())
+		return false;
+
+	// set psm mode to network coordination mode only
+	tempResp = Cellular.command(DEFAULT_TIMEOUT, "AT+UPSMVER=4\r\n");
+
+	// reboot to enable psm mode
+	tempResp = Cellular.command(DEFAULT_TIMEOUT, "AT+CFUN=15\r\n");
+
+	// check psm mode
+	tempResp = Cellular.command(DEFAULT_TIMEOUT, "AT+UPSMVER?\r\n");
+
+	// enable psm
+	// AT+CPSMS=1,,,"00100110","00000101"
+	// 6 hours for TAU
+	// 10 seconds for active time
+	tempResp = Cellular.command(DEFAULT_TIMEOUT, "AT+CPSMS=1,,,\"00100110\",\"00000101\"\r\n");
+
+	// enable radio connection status indication
+	tempResp = Cellular.command(DEFAULT_TIMEOUT, "AT+CSCON=1\r\n");
+
+	// enable psm indication
+	tempResp = Cellular.command(DEFAULT_TIMEOUT, "AT+UPSMR=1\r\n");
+
+	// reboot
+	tempResp = Cellular.command(DEFAULT_TIMEOUT, "AT+CFUN=15\r\n");
+
+	// look for when the modem goes into psm mode, by looking for the +UUPSMR = 1 message
+	unsigned long startTime = millis();
+
+	while(millis() - startTime < 30000) 
+	{
+		delay(100);
+
+		// May have not received a response yet. Send an empty command so we can get responses
+		Cellular.command(responseCallback, (void *)&psm_resp, 500, "");
+		psm_resp.postProcess();
+
+		if (psm_resp.valid && psm_resp.stat == 1)
+			return(true);
+	}
+
+	return(false);
+}
+
+bool CellularHelperClass::disablePSM() const
+{
+	CellularHelperPlusStringResponse resp;
+	resp.command = "CPSMS";
+
+	int respCode;
+
+	// turn off PSM functionality
+	resp.resp = Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+CPSMS=0\r\n");
+
+	// reboot
+	respCode = Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+CFUN=15\r\n");
+
+	return (respCode == RESP_OK);	
+}
+
+bool CellularHelperClass::exitPSM() const
+{
+	// pull modem power_in line low for 150ms
+	digitalWrite(PWR_UC, LOW);
+	delay(150);
+	digitalWrite(PWR_UC, HIGH);
+
+	CellularHelperPsmStatusResponse resp;
+	resp.command = "UUPSMR";
+
+	// look for when the modem goes out of psm mode, by looking for the +UUPSMR = 0 message
+	unsigned long startTime = millis();
+
+	while(millis() - startTime < 10000) 
+	{
+		delay(100);
+
+		// May have not received a response yet. Send an empty command so we can get responses
+		Cellular.command(responseCallback, (void *)&resp, 500, "");
+		resp.postProcess();
+
+		if (resp.valid && resp.stat == 0)
+			return(true);
+	}
+
+	return(false);
+}
+
+bool CellularHelperClass::isModemRegistered() const
+{
+	// check that the modem is registered
+	CellularHelperCEREGResponse reg;
+	getCEREG(reg);
+
+	Log.info("CEREG %s", reg.toString());
+	
+	// check eps registration
+	if (!(reg.stat == 1 || reg.stat == 5))
+		return false;
+	
+	return true;
+}
+bool CellularHelperClass::configureLTE() const
+{}
+/*
+bool CellularHelperClass::configureLTE() const
+{
+	CellularHelperStringResponse resp;
+	int respCode;
+
+	if (!isLTE())
+		return(false);
+
+	// deregister first
+	respCode = Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+COPS=2\r\n");
+
+	// set MNO mode
+	respCode = Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+UMNOPROF=100\r\n");	// EU only!
+
+	// reboot
+	respCode = Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+CFUN=15\r\n");
+
+	// set RAT mode
+	respCode = Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+URAT=7\r\n");
+
+	// reboot
+	respCode = Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+CFUN=15\r\n");
+
+	// set PSM mode
+	respCode = Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+CPSMS=0\r\n");
+
+	// set EDRX mode
+	respCode = Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+CEDRXS=0\r\n");
+
+
+	// reregister
+	respCode = Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+COPS=0\r\n");
+
+	return (respCode == RESP_OK);	
+}
+*/
 void CellularHelperClass::getEnvironment(int mode, CellularHelperEnvironmentResponse &resp) const {
 	resp.command = "CGED";
 	// resp.enableDebug = true;
@@ -911,6 +1168,7 @@ CellularHelperLocationResponse CellularHelperClass::getLocation(unsigned long ti
 			// In the case where we don't get an immediate response, we send empty commands to the
 			// modem to pick up the late +UULOC response
 			while(!resp.valid && millis() - startTime < timeoutMs) {
+			//while(millis() - startTime < timeoutMs) {
 				// Allow for some cloud processing before checking again
 				delay(10);
 
@@ -941,6 +1199,15 @@ void CellularHelperClass::getCREG(CellularHelperCREGResponse &resp) const {
 	}
 }
 
+void CellularHelperClass::getCEREG(CellularHelperCEREGResponse &resp) const {
+	int tempResp;
+
+	resp.command = "CEREG";
+	resp.resp = Cellular.command(responseCallback, (void *)&resp, DEFAULT_TIMEOUT, "AT+CEREG?\r\n");
+	if (resp.resp == RESP_OK) {
+		resp.postProcess();
+	}
+}
 
 bool CellularHelperClass::ping(const char *addr) const {
 	CellularHelperStringResponse resp;
