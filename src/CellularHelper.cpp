@@ -1024,7 +1024,7 @@ bool CellularHelperClass::enterPSM() const
 	// look for when the modem goes into psm mode, by looking for the +UUPSMR = 1 message
 	unsigned long startTime = millis();
 
-	while(millis() - startTime < 30000) 
+	while(millis() - startTime < 60000) 
 	{
 		delay(100);
 
@@ -1068,7 +1068,7 @@ bool CellularHelperClass::exitPSM() const
 	// look for when the modem goes out of psm mode, by looking for the +UUPSMR = 0 message
 	unsigned long startTime = millis();
 
-	while(millis() - startTime < 10000) 
+	while(millis() - startTime < 30000) 
 	{
 		delay(100);
 
