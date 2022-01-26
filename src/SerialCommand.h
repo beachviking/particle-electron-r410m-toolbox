@@ -16,7 +16,7 @@
 // Maximum length of a command excluding the terminating null
 #define SERIALCOMMAND_MAXCOMMANDLENGTH 16
 
-#define serialCLI Serial  // Serial port to use
+#define serialCLI Serial1  // Serial port to use
 
 // Uncomment the next line to run the library in debug mode (verbose messages)
 //#define SERIALCOMMAND_DEBUG

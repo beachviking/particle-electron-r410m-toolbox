@@ -6,6 +6,7 @@
  */
 
 // includes
+#include "Particle.h"
 #include "SerialCommand.h"
 #include "CellularHelper.h"
 
@@ -16,13 +17,14 @@ SYSTEM_MODE(MANUAL);
 SYSTEM_THREAD(ENABLED);
 
 // 'Serial1' usage allows power measurements
-//#define SerialCLI Serial1
-#define SerialCLI Serial
+#define SerialCLI Serial1
+//#define SerialCLI Serial
 
-Serial1LogHandler logHandler(9600,LOG_LEVEL_TRACE);
+Serial1LogHandler logHandler(19200,LOG_LEVEL_TRACE);
 SerialCommand sCmd;
 
 bool cellularOn = false;
+bool cellularPsmOn = false;
 
 const unsigned long MODEM_ON_WAIT_TIME_MS = 4000;
 const unsigned long CONNECT_WAIT_TIME_MS = 40000;
@@ -41,6 +43,14 @@ void get_rat();
 
 void set_mno();
 void get_mno();
+
+void enter_psm();
+void exit_psm();
+void get_psm_settings();
+
+void get_cops();
+void get_cereg();
+void get_creg();
 
 void verify_lte_settings();
 
@@ -66,6 +76,14 @@ void setup() {
 
   sCmd.addCommand("getmno", get_mno);
   sCmd.addCommand("setmno", set_mno);
+
+  sCmd.addCommand("enterpsm", enter_psm);
+  sCmd.addCommand("exitpsm", exit_psm);
+  sCmd.addCommand("getpsm", get_psm_settings);
+
+  sCmd.addCommand("getcops", get_cops);
+  sCmd.addCommand("getcereg", get_cereg);
+  sCmd.addCommand("getcreg", get_creg);
 
   sCmd.addCommand("setuplte", verify_lte_settings);
 
@@ -291,4 +309,55 @@ void verify_lte_settings() {
     Log.info("RAT is ok");
     Log.info("LTE setup verified");
   } // isLTE
+}
+
+void enter_psm()
+{
+  Log.info("Entering PSM mode of modem");
+  if (CellularHelper.enterPSM())
+  {
+    Log.info("PSM mode successfully enabled!");
+    cellularPsmOn = true;
+    cellularOn = false;
+    return;
+  }
+
+  Log.warn("PSM mode not entered...");
+}
+
+void exit_psm()
+{
+  Log.info("Exiting PSM mode of modem");
+  
+  if(!CellularHelper.exitPSM())
+  {
+    Log.warn("Exiting PSM mode failed!");
+    return;
+  }
+
+  // turn off psm, otherwise the modem will enter psm by itself...
+  Log.info("Exited PSM succesfully!");
+  CellularHelper.disablePSM();
+  cellularPsmOn = false;
+  cellularOn = true;
+}
+
+void get_psm_settings()
+{
+  Log.info("Local PSM settings=%s", CellularHelper.getLocalPSMSettings().c_str());
+}
+
+void get_cops()
+{
+  Log.info("COPS = %s", CellularHelper.getCOPS().c_str());
+}
+
+void get_cereg()
+{
+  Log.info("CEREG = %s", CellularHelper.getCEREG().c_str());
+}
+
+void get_creg()
+{
+  Log.info("CREG = %s", CellularHelper.getCREG().c_str());
 }

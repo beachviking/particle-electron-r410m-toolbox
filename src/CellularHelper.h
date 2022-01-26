@@ -161,6 +161,28 @@ public:
 	String toString() const;
 };
 
+class CellularHelperCEREGResponse :  public CellularHelperPlusStringResponse {
+public:
+	bool valid = false;
+	int n = 0;
+	int stat = 0;
+	int lac = 0xFFFF;
+	int ci = 0xFFFFFFFF;
+	int rat = 0;
+
+	void postProcess();
+	String toString() const;
+};
+
+class CellularHelperPsmStatusResponse :  public CellularHelperPlusStringResponse {
+public:
+	bool valid = false;
+	int stat = 0;
+
+	void postProcess();
+	String toString() const;
+};
+
 /**
  * Class for calling the u-blox SARA modem directly
  */
@@ -247,6 +269,23 @@ public:
 
 	bool setMNO(int profile) const;
 	int getMNO() const;
+
+	String getLocalPSMSettings() const;
+	String getNetworkPSMSettings() const;
+
+	bool enterPSM() const;
+	bool disablePSM() const;
+	bool exitPSM() const;
+
+	bool configureLTE() const;
+
+	String getCOPS() const;
+	String getCEREG() const;
+	String getCREG() const;
+
+	void getCEREG(CellularHelperCEREGResponse &resp) const;
+
+	bool isModemRegistered() const;
 
 	String getUGPIOC() const;
 
